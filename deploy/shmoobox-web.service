@@ -1,0 +1,12 @@
+[Unit]
+Description=Shmoobox Web Interface
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /opt/shmoobox/app.py
+WorkingDirectory=/opt/shmoobox
+Restart=always
+User=bear
+
+[Install]
+WantedBy=multi-user.target

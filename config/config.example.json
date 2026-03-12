@@ -1,0 +1,35 @@
+{
+  "setup_complete": false,
+
+  "system": {
+    "hostname": "shmoobox"
+  },
+
+  "network": {
+    "mode": "dhcp",
+    "lan_ip": null
+  },
+
+  "mail": {
+    "domain": null,
+    "admin_email": null,
+    "relay": {
+      "enabled": false,
+      "provider": "mailgun",
+      "api_key": "",
+      "domain": ""
+    }
+  },
+
+  "vpn": {
+    "mode": "managed",
+    "server": null,
+    "client_id": null
+  },
+
+  "backup": {
+    "enabled": true,
+    "path": "/mnt/backup",
+    "schedule": "daily"
+  }
+}
