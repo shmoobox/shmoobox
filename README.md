@@ -1,6 +1,8 @@
-# Shmoobox
+Shmoobox
+A self-hosted email appliance designed to run on Raspberry Pi hardware.
 
-Open-source email appliance project.
+The goal is a plug-and-play mail server with simple web-based setup
+and minimal administration.
 
 Current status:
 - Flask status UI
