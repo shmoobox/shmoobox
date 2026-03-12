@@ -21,18 +21,18 @@ fi
 
 echo "Deploying Shmoobox to $TARGET ..."
 
-ssh "$TARGET" 'mkdir -p /tmp/shmoobox-deploy'
-scp "$REPO_ROOT/app/app.py" "$TARGET:/tmp/shmoobox-deploy/app.py"
-scp "$REPO_ROOT/deploy/shmoobox-web.service" "$TARGET:/tmp/shmoobox-deploy/shmoobox-web.service"
-scp "$REPO_ROOT/config/config.example.json" "$TARGET:/tmp/shmoobox-deploy/config.example.json"
+ssh "$TARGET" sudo mkdir -p /opt/shmoobox/app /opt/shmoobox/config
+ssh "$TARGET" sudo chown -R bear:bear /opt/shmoobox
+ssh "$TARGET" sudo mkdir -p /etc/shmoobox
+ssh "$TARGET" mkdir -p /tmp/shmoobox-deploy
+
+rsync -av "$REPO_ROOT/app/" "$TARGET:/opt/shmoobox/app/"
+rsync -av "$REPO_ROOT/config/" "$TARGET:/opt/shmoobox/config/"
+rsync -av "$REPO_ROOT/deploy/shmoobox-web.service" "$TARGET:/tmp/shmoobox-deploy/shmoobox-web.service"
 
 ssh "$TARGET" 'bash -s' <<'EOF'
 set -euo pipefail
 
-sudo mkdir -p /opt/shmoobox
-sudo mkdir -p /etc/shmoobox
-
-sudo cp /tmp/shmoobox-deploy/app.py /opt/shmoobox/app.py
 sudo cp /tmp/shmoobox-deploy/shmoobox-web.service /etc/systemd/system/shmoobox-web.service
 
 if [[ ! -f /etc/shmoobox/config.json ]]; then
@@ -43,9 +43,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable shmoobox-web
 sudo systemctl restart shmoobox-web
 
-rm -f /tmp/shmoobox-deploy/app.py
 rm -f /tmp/shmoobox-deploy/shmoobox-web.service
-rm -f /tmp/shmoobox-deploy/config.example.json
 rmdir /tmp/shmoobox-deploy 2>/dev/null || true
 EOF
 
