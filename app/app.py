@@ -1,4 +1,5 @@
 from flask import Flask
+from config import load_config, save_config
 import os
 import socket
 import shutil
@@ -26,19 +27,6 @@ def get_uptime() -> str:
         return f"{hours}h {minutes}m"
     except Exception:
         return "unknown"
-
-CONFIG_PATH = "/etc/shmoobox/config.json"
-
-def load_config():
-    try:
-        with open(CONFIG_PATH) as f:
-            return json.load(f)
-    except:
-        return {"setup_complete": False}
-
-def save_config(cfg):
-    with open(CONFIG_PATH, "w") as f:
-        json.dump(cfg, f, indent=2)
 
 @app.route("/")
 def index():
