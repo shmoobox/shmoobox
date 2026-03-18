@@ -3,13 +3,16 @@ import shutil
 import socket
 import subprocess
 
-from config import load_config, save_config
-from network import (
-    connect_wifi,
-    get_active_connection,
-    is_connected,
-    list_wifi_networks,
-    start_hotspot,
+from network import list_wifi_networks
+from state import (
+    STATE_OFFLINE_RECOVERING,
+    STATE_ONLINE_READY,
+    attempt_wifi_connection,
+    get_status,
+    handle_network_loss,
+    page_for_state,
+    reconcile_state,
+    submit_wifi_credentials,
 )
 
 app = Flask(__name__)
@@ -30,7 +33,6 @@ def get_uptime() -> str:
         days, rem = divmod(seconds, 86400)
         hours, rem = divmod(rem, 3600)
         minutes, _ = divmod(rem, 60)
-
         if days:
             return f"{days}d {hours}h {minutes}m"
         return f"{hours}h {minutes}m"
@@ -40,150 +42,140 @@ def get_uptime() -> str:
 
 @app.route("/")
 def index():
-    cfg = load_config()
+    reconcile_state()
+    status = get_status()
 
-    if not is_connected():
-        return redirect(url_for("setup_network"))
+    if status["state"] != STATE_ONLINE_READY:
+        return redirect(url_for(page_for_state(status["state"])))
 
     hostname = socket.gethostname()
     ips = get_ip_addresses()
     uptime = get_uptime()
     total, used, free = shutil.disk_usage("/")
-
-    active = get_active_connection()
+    active = status["active_connection"]
     active_name = active["name"] if active else "unknown"
     active_type = active["type"] if active else "unknown"
-
-    setup = "complete" if cfg.get("setup_complete") else "incomplete"
+    setup = "complete" if status["setup_complete"] else "incomplete"
 
     html = f"""
-    <html>
-    <head>
-      <title>Shmoobox</title>
-    </head>
-    <body>
-      <h1>Shmoobox</h1>
-      <p><strong>Status:</strong> alive</p>
-      <p><strong>Hostname:</strong> {hostname}</p>
-      <p><strong>IP address(es):</strong> {ips}</p>
-      <p><strong>Uptime:</strong> {uptime}</p>
-      <p><strong>Disk free:</strong> {free // (1024**3)} GB</p>
-      <p><strong>Setup:</strong> {setup}</p>
-      <p><strong>Active connection:</strong> {active_name} ({active_type})</p>
-      <p><a href="/setup/network">Network setup</a></p>
-      <p><a href="/complete">Mark setup complete</a></p>
-    </body>
-    </html>
-    """
+<h1>Shmoobox</h1>
+
+<p>Status: alive</p>
+<p>State: {status["state"]}</p>
+<p>Hostname: {hostname}</p>
+<p>IP address(es): {ips}</p>
+<p>Uptime: {uptime}</p>
+<p>Disk free: {free // (1024**3)} GB</p>
+<p>Setup: {setup}</p>
+<p>Active connection: {active_name} ({active_type})</p>
+
+<p><a href="/setup/network">Network setup</a></p>
+<p><a href="/network/recover">Force recovery attempt</a></p>
+"""
     return html
 
 
 @app.route("/setup/network", methods=["GET", "POST"])
 def setup_network():
-    cfg = load_config()
+    reconcile_state()
+    status = get_status()
+
     message = ""
-    error = ""
+    error = status["last_error"]
 
     if request.method == "POST":
         appliance_name = request.form.get("appliance_name", "").strip()
         ssid = request.form.get("ssid", "").strip()
         password = request.form.get("password", "").strip()
 
-        if appliance_name:
-            cfg["appliance_name"] = appliance_name
+        if not ssid or not password:
+            error = "SSID and password are required."
+        else:
+            submit_wifi_credentials(appliance_name, ssid, password)
+            status = get_status()
 
-        if "network" not in cfg or not isinstance(cfg["network"], dict):
-            cfg["network"] = {}
+            if status["state"] == STATE_ONLINE_READY:
+                return redirect(url_for("index"))
 
-        cfg["network"]["last_wifi_ssid"] = ssid or None
+            error = status["last_error"]
 
-        try:
-            if ssid and password:
-                ok = connect_wifi(ssid, password)
-                if ok:
-                    cfg["setup_complete"] = True
-                    save_config(cfg)
-                    return redirect(url_for("index"))
-                else:
-                    error = "Wi-Fi connection failed. Starting hotspot."
-                    start_hotspot()
-                    save_config(cfg)
-            else:
-                error = "SSID and password are required."
-                save_config(cfg)
-        except Exception as exc:
-            error = f"Network error: {exc}"
-            try:
-                start_hotspot()
-            except Exception:
-                pass
-            save_config(cfg)
-
+    status = get_status()
     networks = list_wifi_networks()
-
     network_items = "".join(
         f"<li>{n['ssid']} (signal: {n['signal']}, security: {n['security']})</li>"
         for n in networks
     )
-
     if not network_items:
         network_items = "<li>No Wi-Fi networks found.</li>"
 
-    appliance_name = cfg.get("appliance_name", "shmoobox")
-    last_ssid = cfg.get("network", {}).get("last_wifi_ssid", "") or ""
+    appliance_name = "shmoobox"
+    saved_ssid = status.get("saved_ssid", "") or ""
 
     html = f"""
-    <html>
-    <head>
-      <title>Shmoobox Network Setup</title>
-    </head>
-    <body>
-      <h1>Shmoobox Network Setup</h1>
+<h1>Shmoobox Network Setup</h1>
 
-      <p>Shmoobox is not currently connected to a network.</p>
+<p>Current state: {status["state"]}</p>
+<p>Connected: {"yes" if status["is_connected"] else "no"}</p>
+<p>Hotspot active: {"yes" if status["hotspot_active"] else "no"}</p>
 
-      {f'<p style="color: green;"><strong>{message}</strong></p>' if message else ''}
-      {f'<p style="color: red;"><strong>{error}</strong></p>' if error else ''}
+{"<p><strong>" + message + "</strong></p>" if message else ""}
+{"<p style='color:red;'><strong>" + error + "</strong></p>" if error else ""}
 
-      <form method="post">
-        <p>
-          <label for="appliance_name">Appliance name:</label><br>
-          <input type="text" id="appliance_name" name="appliance_name" value="{appliance_name}">
-        </p>
+<p>Shmoobox is not currently ready for normal operation.</p>
 
-        <p>
-          <label for="ssid">Wi-Fi SSID:</label><br>
-          <input type="text" id="ssid" name="ssid" value="{last_ssid}">
-        </p>
+<form method="post">
+  <p>
+    <label>Appliance name:<br>
+      <input type="text" name="appliance_name" value="{appliance_name}">
+    </label>
+  </p>
 
-        <p>
-          <label for="password">Wi-Fi password:</label><br>
-          <input type="password" id="password" name="password">
-        </p>
+  <p>
+    <label>Wi-Fi SSID:<br>
+      <input type="text" name="ssid" value="{saved_ssid}">
+    </label>
+  </p>
 
-        <p>
-          <button type="submit">Connect</button>
-        </p>
-      </form>
+  <p>
+    <label>Wi-Fi password:<br>
+      <input type="password" name="password" value="">
+    </label>
+  </p>
 
-      <h2>Visible Wi-Fi Networks</h2>
-      <ul>
-        {network_items}
-      </ul>
+  <p><button type="submit">Connect</button></p>
+</form>
 
-      <p><a href="/">Back to status</a></p>
-    </body>
-    </html>
-    """
+<h2>Visible Wi-Fi Networks</h2>
+<ul>
+  {network_items}
+</ul>
+
+<p><a href="/">Back to status</a></p>
+<p><a href="/network/recover">Retry saved Wi-Fi now</a></p>
+"""
     return html
 
 
-@app.route("/complete")
-def complete():
-    cfg = load_config()
-    cfg["setup_complete"] = True
-    save_config(cfg)
-    return "Setup marked complete"
+@app.route("/network/recover")
+def network_recover():
+    handle_network_loss()
+    status = get_status()
+
+    if status["state"] == STATE_ONLINE_READY:
+        return redirect(url_for("index"))
+
+    return redirect(url_for("setup_network"))
+
+
+@app.route("/network/retry")
+def network_retry():
+    attempt_wifi_connection()
+    status = get_status()
+
+    if status["state"] == STATE_ONLINE_READY:
+        return redirect(url_for("index"))
+
+    return redirect(url_for("setup_network"))
 
 
 if __name__ == "__main__":

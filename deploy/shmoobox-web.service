@@ -3,7 +3,7 @@ Description=Shmoobox Web Interface
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/python3 /opt/shmoobox/app.py
+ExecStart=/usr/bin/python3 /opt/shmoobox/app/app.py
 WorkingDirectory=/opt/shmoobox
 Restart=always
 User=bear

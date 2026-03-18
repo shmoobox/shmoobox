@@ -5,44 +5,31 @@ import tempfile
 from typing import Any, Dict
 
 CONFIG_DIR = "/etc/shmoobox"
+CONFIG_FILE = f"{CONFIG_DIR}/config.json"
 CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
 EXAMPLE_CONFIG_PATH = "/opt/shmoobox/config/config.example.json"
 
 
-def ensure_config_exists() -> None:
-    """
-    Ensure the live config file exists.
-
-    If /etc/shmoobox/config.json is missing, seed it from the example config.
-    The example config is treated as immutable factory defaults.
-    """
+def ensure_config_exists():
     os.makedirs(CONFIG_DIR, exist_ok=True)
 
-    if os.path.exists(CONFIG_PATH):
-        return
-
-    if not os.path.exists(EXAMPLE_CONFIG_PATH):
-        raise FileNotFoundError(
-            f"Example config not found: {EXAMPLE_CONFIG_PATH}"
-        )
-
-    shutil.copy2(EXAMPLE_CONFIG_PATH, CONFIG_PATH)
+    if not os.path.exists(CONFIG_FILE):
+        cfg = default_config()
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2)
 
 
-def load_config() -> Dict[str, Any]:
-    """
-    Load the live config from disk, creating it from the example if needed.
-    """
+def load_config() -> dict:
     ensure_config_exists()
 
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    if not isinstance(data, dict):
-        raise ValueError(f"Config file must contain a JSON object: {CONFIG_PATH}")
-
-    return data
-
+    try:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        # Corrupt or unreadable config → reset
+        cfg = default_config()
+        save_config(cfg)
+        return cfg
 
 def save_config(cfg: Dict[str, Any]) -> None:
     """
@@ -78,3 +65,22 @@ def save_config(cfg: Dict[str, Any]) -> None:
         except FileNotFoundError:
             pass
         raise
+
+def default_config() -> dict:
+    return {
+        "setup_complete": False,
+        "appliance_name": "shmoobox",
+        "network": {
+            "last_wifi_ssid": None,
+            "wifi_password": None,
+        },
+        "state_machine": {
+            "current_state": "BOOT",
+            "last_error": "",
+            "hotspot_active": False,
+            "recovery_attempts": 0,
+            "max_recovery_attempts": 5,
+            "last_state_change": 0,
+            "last_connected_at": 0,
+        },
+    }
