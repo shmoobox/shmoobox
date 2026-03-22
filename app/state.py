@@ -196,7 +196,12 @@ def reconcile_state() -> Dict[str, Any]:
     return cfg
 
 
-def submit_wifi_credentials(appliance_name: str, ssid: str, password: str) -> Dict[str, Any]:
+def submit_wifi_credentials(
+    appliance_name: str,
+    ssid: str,
+    password: str,
+    hidden: bool = False,
+) -> None:
     """
     Save user-supplied provisioning values, then attempt client connection.
     """
@@ -207,10 +212,15 @@ def submit_wifi_credentials(appliance_name: str, ssid: str, password: str) -> Di
 
     cfg["network"]["last_wifi_ssid"] = ssid.strip() or None
     cfg["network"]["wifi_password"] = password
+    cfg["network"]["wifi_hidden"] = bool(hidden)
 
+    _save_cfg(cfg)    
+    ok = attempt_wifi_connection()
+    if not ok:
+        raise RuntimeError(f"Failed to connect to Wi-Fi network {ssid!r}")
+
+    cfg["setup_complete"] = True
     _save_cfg(cfg)
-    return attempt_wifi_connection()
-
 
 def attempt_wifi_connection() -> Dict[str, Any]:
     cfg = _load_cfg()

@@ -87,17 +87,18 @@ def setup_network():
         appliance_name = request.form.get("appliance_name", "").strip()
         ssid = request.form.get("ssid", "").strip()
         password = request.form.get("password", "").strip()
-
+        hidden = request.form.get("hidden") == "on"
+    
         if not ssid or not password:
             error = "SSID and password are required."
         else:
-            submit_wifi_credentials(appliance_name, ssid, password)
-            status = get_status()
+            submit_wifi_credentials(appliance_name, ssid, password, hidden=hidden)            
+    status = get_status()
 
-            if status["state"] == STATE_ONLINE_READY:
-                return redirect(url_for("index"))
+    if status["state"] == STATE_ONLINE_READY:
+        return redirect(url_for("index"))
 
-            error = status["last_error"]
+    error = status["last_error"]
 
     status = get_status()
     networks = list_wifi_networks()
@@ -141,7 +142,11 @@ def setup_network():
       <input type="password" name="password" value="">
     </label>
   </p>
-
+  <p>
+    <label>Hidden network:
+      <input type="checkbox" name="hidden">
+    </label>
+  </p>
   <p><button type="submit">Connect</button></p>
 </form>
 
