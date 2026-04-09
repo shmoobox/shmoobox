@@ -202,10 +202,10 @@ def _scan_visible_ssids(wifi_device: str) -> List[str]:
     _nmcli("radio", "wifi", "on", check=False)
 
     # Give the adapter a moment to settle after AP teardown.
-    time.sleep(2)
+    time.sleep(8)
 
     _nmcli("device", "wifi", "rescan", "ifname", wifi_device, check=False)
-    time.sleep(2)
+    time.sleep(8)
 
     result = _nmcli(
         "-t",

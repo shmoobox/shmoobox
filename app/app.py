@@ -184,4 +184,5 @@ def network_retry():
 
 
 if __name__ == "__main__":
+    reconcile_state()
     app.run(host="0.0.0.0", port=8080)
